@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin dashboard | Campus Care</title><link rel="stylesheet" href="/css/style.css"></head>
+<body>
+<div id="shell"></div>
+<script src="/js/app.js"></script>
+<script>
+requireRole('admin').then(async user => {
+  if (!user) return;
+  document.querySelector('#shell').innerHTML = `${side('Overview', 'admin')}<main class="main"><div class="page-header"><div><div class="eyebrow">Staff workspace</div><h1>Complaint operations</h1><p class="muted">Review, route, and resolve student concerns.</p></div></div><div class="stat-grid" id="stats"></div><div id="overdue-message"></div><section class="table-wrap"><div class="toolbar"><input id="search" placeholder="Search complaints or students"><select id="status"><option value="">All statuses</option>${['Pending','Under Review','In Progress','Resolved','Rejected','Closed'].map(x => `<option>${x}</option>`).join('')}</select><select id="category"><option value="">All categories</option>${['Academic','Faculty','Infrastructure','Hostel','Library','Laboratory','Transport','Canteen','Examination','Fees','IT/Technical','Other'].map(x => `<option>${x}</option>`).join('')}</select></div><div id="list"></div></section><section class="panel student-management"><div class="page-header"><div><h2>Student accounts</h2><p class="muted">View, edit, or remove registered students.</p></div><input id="student-search" placeholder="Search students"></div><div id="student-list"></div></section></main>`;
+  const statsData = await api('/admin/dashboard');
+  document.querySelector('#stats').innerHTML = [['Total complaints', statsData.total, 'teal'], ['Pending', statsData.Pending, 'gold'], ['Under review', statsData['Under Review'], 'teal'], ['In progress', statsData['In Progress'], 'coral'], ['Resolved', statsData.Resolved, 'green'], ['Rejected', statsData.Rejected, 'coral']].map(x => `<div class="stat ${x[2]}"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('');
+  async function load() {
+    const query = new URLSearchParams({ search: document.querySelector('#search').value, status: document.querySelector('#status').value, category: document.querySelector('#category').value });
+    const rows = await api('/admin/complaints?' + query);
+    const overdueHtml = overdueAlertMessage(rows);
+    document.querySelector('#overdue-message').innerHTML = overdueHtml;
+    document.querySelector('#list').innerHTML = rows.length ? `<table class="data-table"><tr><th>Complaint</th><th>Student</th><th>Category</th><th>Due date</th><th>Status</th><th>Date</th><th></th></tr>${rows.map(c => `<tr style="${isComplaintOverdue(c) ? 'background: rgba(214, 97, 97, 0.08);' : ''}"><td><strong>#CC-${String(c.id).padStart(5, '0')}</strong><br>${c.title}</td><td>${c.student_name}<br><small class="muted">${c.student_number}</small></td><td>${c.category}</td><td>${c.due_date ? new Date(c.due_date + 'T00:00:00').toLocaleDateString() : '—'}</td><td>${statusBadge(c.status)}</td><td>${new Date(c.created_at).toLocaleDateString()}</td><td><button class="btn secondary" onclick="manage(${c.id})">Manage</button></td></tr>`).join('')}</table>` : '<div class="empty">No complaints match these filters.</div>';
+  }
+  document.querySelector('#search').addEventListener('input', load);
+  document.querySelector('#status').addEventListener('change', load);
+  document.querySelector('#category').addEventListener('change', load);
+  window.manage = async id => {
+    const next = prompt('New status: Pending, Under Review, In Progress, Resolved, Rejected, or Closed');
+    if (!next) return;
+    const remarks = prompt('Add a remark (optional):') || '';
+    const dueDate = prompt('Set a due date (YYYY-MM-DD, optional):') || '';
+    try { await api('/admin/complaints/' + id + '/status', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next, remarks, dueDate }) }); await load(); } catch (error) { alert(error.message); }
+  };
+  await load();
+  async function loadStudents() {
+    const query = new URLSearchParams({ search: document.querySelector('#student-search').value });
+    const rows = await api('/admin/students?' + query);
+    document.querySelector('#student-list').innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table"><tr><th>Student</th><th>Contact</th><th>Department</th><th>Complaints</th><th>Actions</th></tr>${rows.map(student => `<tr><td><strong>${student.name}</strong><br><small class="muted">${student.student_id}</small></td><td>${student.email}<br>${student.phone || 'No phone'}</td><td>${student.department}<br>Year ${student.year}</td><td>${student.complaint_count}</td><td><button class="btn secondary" onclick="editStudent(${student.id})">Edit</button> <button class="btn danger" onclick="deleteStudent(${student.id}, '${student.name.replaceAll("'", "\\'")}')">Delete</button></td></tr>`).join('')}</table></div>` : '<div class="empty">No students found.</div>';
+  }
+  document.querySelector('#student-search').addEventListener('input', loadStudents);
+  window.editStudent = async id => {
+    const name = prompt('Student name:');
+    if (!name) return;
+    const email = prompt('Student email:');
+    const department = prompt('Department:');
+    const year = prompt('Year (1-4):');
+    const phone = prompt('Phone (optional):') || '';
+    try { await api('/admin/students/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, department, year, phone }) }); await loadStudents(); } catch (error) { alert(error.message); }
+  };
+  window.deleteStudent = async (id, name) => {
+    if (!confirm(`Delete ${name} and all of their complaints? This cannot be undone.`)) return;
+    try { await api('/admin/students/' + id, { method: 'DELETE' }); await loadStudents(); await load(); } catch (error) { alert(error.message); }
+  };
+  await loadStudents();
+}).catch(error => {
+  document.querySelector('#shell').insertAdjacentHTML('beforeend', `<main class="main"><div class="message" style="display:block">${error.message}</div></main>`);
+});
+</script>
+</body>
+</html>

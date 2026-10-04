@@ -1,0 +1,15 @@
+const router = require('express').Router();
+const { requireAuth } = require('../middleware/authMiddleware');
+const controller = require('../controllers/adminController');
+const complaintController = require('../controllers/complaintController');
+router.use(requireAuth('admin'));
+router.get('/complaints', controller.list);
+router.get('/dashboard', controller.dashboard);
+router.get('/students', controller.students);
+router.put('/students/:id', controller.updateStudent);
+router.delete('/students/:id', controller.removeStudent);
+router.get('/complaints/:id', complaintController.getOne);
+router.put('/complaints/:id/status', complaintController.update);
+router.post('/complaints/:id/remarks', complaintController.update);
+router.delete('/complaints/:id', complaintController.remove);
+module.exports = router;
